@@ -1,19 +1,29 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Streamlit runs this file as a script — make package imports work.
+_SRC = Path(__file__).resolve().parents[1]
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 import pandas as pd
 import streamlit as st
 
-from .collect import snapshot_usage
-from .db import connect
-from .poll_openrouter import fetch_models, store_models
-from .recommend import build_recommendations
+from radar.collect import snapshot_usage
+from radar.db import connect
+from radar.poll_openrouter import fetch_models, store_models
+from radar.recommend import build_recommendations
+from radar.apply import apply_recommended_routing, preview_routing
+from radar.alerts import check_discount_alerts, list_recent_alerts
 
 
 st.set_page_config(page_title="Hermes Model Radar", layout="wide")
 st.title("Hermes Model Radar")
 st.caption("Upgrade-safe sidecar · usage + cache + OpenRouter prices · sticky-model advice")
 
-cols = st.columns(3)
+cols = st.columns(4)
 with cols[0]:
     if st.button("Refresh Hermes usage"):
         result = snapshot_usage()
@@ -26,16 +36,41 @@ with cols[2]:
     if st.button("Rebuild recommendations"):
         recs = build_recommendations()
         st.success(f"{len(recs)} recommendations")
+with cols[3]:
+    if st.button("Check discount alerts"):
+        alerts = check_discount_alerts()
+        st.success(f"{len(alerts)} alert(s)")
 
 conn = connect()
 
 st.subheader("Recommendations")
-recs = pd.read_sql_query("SELECT severity, kind, title, detail, created_at FROM recommendations ORDER BY created_at DESC", conn)
+recs = pd.read_sql_query(
+    "SELECT severity, kind, title, detail, created_at FROM recommendations ORDER BY created_at DESC",
+    conn,
+)
 if recs.empty:
     st.info("No recommendations yet — click the refresh buttons above.")
 else:
     for _, row in recs.iterrows():
         st.markdown(f"**[{row['severity']}] {row['title']}**  \n{row['detail']}")
+
+st.subheader("Auto-apply routing (safe defaults)")
+st.code(preview_routing(), language="yaml")
+c1, c2 = st.columns(2)
+with c1:
+    if st.button("Apply sticky GLM Flash routing to Hermes"):
+        out = apply_recommended_routing(restart=True)
+        st.success(out)
+with c2:
+    st.caption("Writes ~/.hermes/config.yaml model + auxiliary cheap models, then restarts hermes-gateway.")
+
+st.subheader("Discount / price alerts")
+alerts = list_recent_alerts()
+if not alerts:
+    st.info("No alerts yet — click Check discount alerts.")
+else:
+    for a in alerts:
+        st.markdown(f"- **{a['title']}**: {a['detail']}")
 
 st.subheader("Usage by model (latest snapshot)")
 latest = conn.execute("SELECT MAX(snapshot_at) FROM usage_by_model").fetchone()[0]

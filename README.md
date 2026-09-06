@@ -1,51 +1,37 @@
 # hermes-model-radar
 
-Upgrade-safe **sidecar** for [Hermes Agent](https://hermes-agent.nousresearch.com/): deeper usage analytics than OpenRouter's aggregate charts, plus model recommendations that respect **prompt-cache stickiness**.
+Upgrade-safe **sidecar** for Hermes Agent: usage/cache/cost analytics, OpenRouter cheap-model board, discount alerts, and optional auto-apply of sticky routing.
 
-## Why
-People often blame the model when the real issues are:
-- bloated context (skills/MCP schemas every turn)
-- expensive auxiliary/background models
-- mid-task model hopping (kills cache)
-- using frontier models for flash-class work
+## Live
+- Dashboard: http://62.238.127.240:8501
+- Planning notes: [`docs/planning/`](docs/planning/) (also `/root/HERMES_BIG_PLAN` on the VPS)
 
-This project reads Hermes `state.db` (sessions + `session_model_usage`) and OpenRouter public pricing to answer:
-- tokens / cache-read / cache-write / $ per model
-- which task patterns look expensive
-- which cheaper models are on the board (and discounted)
-- whether you should **stay sticky** on the current model
+## Features
+- Collect from Hermes `state.db` (`session_model_usage`, cache tokens, costs)
+- Poll OpenRouter model prices
+- Recommendations (cache stickiness, cheap alternatives)
+- Discount / Flash-class alerts
+- Auto-apply sticky GLM Flash + cheap aux/delegation to `~/.hermes/config.yaml`
+- Hermes skill for Telegram: `hermes-model-radar`
 
-## Architecture
-```
-Hermes (stock, updatable)
-   └── ~/.hermes/state.db
-            │
-            ▼
-   hermes-model-radar (this repo)
-     collector → SQLite metrics mirror
-     openrouter poller → live prices
-     recommender → sticky + cheap alternatives
-     streamlit dashboard
-```
-
-Survives `hermes update` because it never patches Hermes core.
-
-## Quick start (VPS)
+## CLI
 ```bash
 cd /root/hermes-model-radar
-python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-python -m src.radar.collect
-python -m src.radar.poll_openrouter
-python -m src.radar.recommend
-streamlit run src/radar/dashboard.py --server.port 8501 --server.address 0.0.0.0
+export PYTHONPATH=src
+set -a; source /root/.hermes/.env; set +a
+python -m radar.cli_report report
+python -m radar.cli_report alerts
+python -m radar.cli_report apply --preview
+python -m radar.cli_report apply
 ```
 
-Optional env:
-- `HERMES_HOME` (default `/root/.hermes`)
-- `OPENROUTER_API_KEY` (optional; public models list works without it)
-- `RADAR_DB` (default `./data/radar.db`)
+## Telegram
+Ask Hermes things like:
+- "Run the model radar cost report"
+- "Any OpenRouter discount alerts?"
+- "Preview cheap sticky routing"
+- "Apply cheap sticky routing"
 
-## Status
-MVP: collector + OpenRouter price board + recommendations + dashboard.
+## Why not fork Hermes?
+Weekly upstream updates. This repo stays outside Hermes core so `hermes update` does not wipe your improvements.
